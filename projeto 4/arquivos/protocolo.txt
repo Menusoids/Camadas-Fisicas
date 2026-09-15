@@ -1,0 +1,34 @@
+PROTOCOLO DE DOWNLOAD POR DATAGRAMAS - Projeto 3
+Camada Fisica da Computacao - Insper
+
+Pacote: [ HEAD 12 B ][ PAYLOAD 0..100 B ][ EOP 4 B ]
+
+HEAD
+  byte  0    tipo do pacote
+  byte  1    id do arquivo (0 = controle)
+  bytes 2-3  numero do pacote
+  bytes 4-5  total de pacotes do arquivo
+  byte  6    tamanho do payload
+  byte  7    flag livre
+  byte  8    checksum do payload
+  bytes 9-11 reserva
+
+EOP: AA BB CC DD
+
+TIPOS
+   1 HELLO      client pergunta se o server esta vivo e pede a lista
+   2 LISTA      server devolve um nome de arquivo por pacote
+   3 PEDIDO     client escolhe um arquivo
+   4 RESPOSTA   texto do server para o terminal do client
+   5 START      client encerra a escolha
+   6 DADOS      fragmento de arquivo
+   7 ACK        confirmacao de um pacote
+   8 NACK       checksum invalido, reenvia
+   9 FIM        arquivo terminou
+  10 PAUSE      tecla P no client
+  11 RESUME     tecla C no client
+  12 ABORT      tecla A no client
+
+Transmissao: stop and wait com rodizio entre os arquivos escolhidos.
+O server so envia o proximo pacote depois do ACK do anterior, e alterna
+um pacote de cada arquivo ainda em transmissao.
