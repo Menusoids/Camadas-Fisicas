@@ -29,7 +29,7 @@ uint8_t paridadePar(uint8_t dado) {
 }
 
 uint16_t montaFrame(uint8_t dado, bool inverteParidade) {
-  uint8_t p = paridadePar(dado) ^ (inverteParidade ? 1 : 0);
+  uint8_t p = paridadePar(dado) ^ (inverteParidade ? 1 : 0); // Inverte o de paridade pra simular o erro 
   // bit 0 = start (0)  |  bits 1..8 = dado  |  bit 9 = paridade  |  bit 10 = stop (1)
   return (1u << 10) | ((uint16_t)p << 9) | ((uint16_t)dado << 1);
 }
