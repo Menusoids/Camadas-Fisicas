@@ -28,14 +28,15 @@ uint8_t paridadePar(uint8_t dado) {
   return uns % 2;   // paridade PAR: bit = 1 se o numero de 1s for impar, pra ficar par no total
 }
 
-uint16_t montaFrame(uint8_t dado, bool inverteParidade) {
+uint16_t montaFrame(uint8_t dado, bool inverteParidade) { // guarda o frame em forma de um inteiro, é uma fila de bits afinal
   uint8_t p = paridadePar(dado) ^ (inverteParidade ? 1 : 0); // Inverte o de paridade pra simular o erro 
   // bit 0 = start (0)  |  bits 1..8 = dado  |  bit 9 = paridade  |  bit 10 = stop (1)
   return (1u << 10) | ((uint16_t)p << 9) | ((uint16_t)dado << 1);
+  // ele desloca os bits de dado para suas posições corretas. ai ele usa o XOR pra juntar com o bit de paridade
 }
 
 uint16_t frame;
-uint8_t  bitAtual = BITS_FRAME;   // == BITS_FRAME: frame terminou, estamos no intervalo
+uint8_t  bitAtual = BITS_FRAME;   // faz isso pra ja começar na situaçao 2
 uint32_t tInicio;
 uint16_t enviados = 0;
 uint8_t  idx = 0;
@@ -51,26 +52,27 @@ void setup() {
 void loop() {
   uint32_t agora = micros();
 
-  if (bitAtual < BITS_FRAME) {
+  if (bitAtual < BITS_FRAME) { // esta no meio de um fram tem que enviar o próximo bit
     // a subtracao unsigned continua certa quando micros() da a volta (a cada ~70 min)
-    if (agora - tInicio >= (uint32_t)bitAtual * T_BIT) {
+    if (agora - tInicio >= (uint32_t)bitAtual * T_BIT) { 
+//  se o tempo desde que começou >=  tempo de envio do bit de analise no momento
       digitalWrite(PINO_TX, (frame >> bitAtual) & 0x01);
       bitAtual++;
     }
     return;
   }
 
-  if (agora - tInicio >= (uint32_t)BITS_FRAME * T_BIT + INTERVALO) {
-    uint8_t dado = MENSAGEM[idx];
-    idx = (idx + 1) % (sizeof(MENSAGEM) - 1);
+  if (agora - tInicio >= (uint32_t)BITS_FRAME * T_BIT + INTERVALO) { // está na hora de começar outr frame
+    uint8_t dado = MENSAGEM[idx];          // 1. pega a próxima letra
+    idx = (idx + 1) % (sizeof(MENSAGEM) - 1);     // 2. avança o índice (e volta ao início no fim)
     enviados++;
-    bool erro = ERRO_A_CADA && (enviados % ERRO_A_CADA == 0);
-    frame    = montaFrame(dado, erro);
+    bool erro = ERRO_A_CADA && (enviados % ERRO_A_CADA == 0);     // 3. é a vez de errar de propósito?
+    frame    = montaFrame(dado, erro);                             // 4. monta os 11 bits
 
     Serial.print("-> '"); Serial.print((char)dado); Serial.print("' 0x"); Serial.print(dado, HEX);
-    Serial.print(" paridade="); Serial.print((frame >> 9) & 0x01);
+    Serial.print(" paridade="); Serial.print((frame >> 9) & 0x01);          
     if (erro) Serial.print("  (INVERTIDA de proposito)");
-    Serial.println();
+    Serial.println();                   // 5. mostra no monitor o que vai sair
 
     bitAtual = 0;
     tInicio  = micros();   // depois do print, pra ele nao roubar tempo do start bit

@@ -73,8 +73,8 @@ void loop() {
       if (digitalRead(PINO_RX) == HIGH) {
         tUltimoHigh = agora;
       } else {                               // borda de descida = comeco do start bit
-        uint32_t gap = agora - tUltimoHigh;  // se o loop travou (print bloqueou), o ponto medio nao vale: usa agora
-        tStart   = agora - (gap < T_BIT ? gap / 2 : 0);
+        uint32_t gap = agora - tUltimoHigh;  // marca que o frame mudou entre a ultima e essa iteração
+        tStart   = agora - (gap < T_BIT ? gap / 2 : 0); // pega o tempo real de inicio
         bitAtual = 0;
         dado     = 0;
         estado   = LENDO;
