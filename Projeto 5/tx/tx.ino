@@ -10,11 +10,11 @@
 #include <Arduino.h>
 
 const uint8_t  PINO_TX     = 8;
-const uint32_t BAUD        = 9600;
+const uint32_t BAUD        = 29600;
 const uint32_t T_BIT       = 1000000UL / BAUD;   // 104 us a 9600
 const uint32_t INTERVALO   = 250000UL;           // us de silencio entre frames, so pra dar tempo de ler o monitor
                                                  // (minimo ~10 ms: o print do RX leva ~6 ms a 115200 e engoliria o proximo start)
-const char     MENSAGEM[]  = "Camadas Fisicas ";
+const char     MENSAGEM[]  = "Camada Fisica";
 uint8_t        ERRO_A_CADA = 0;   // DEMO do erro de paridade: inverte o bit de paridade a cada N frames (0 = desligado)
 
 const uint8_t  BITS_FRAME  = 11;  // 1 start + 8 dados + 1 paridade + 1 stop
