@@ -17,7 +17,7 @@ F_MSG = 1200
 ORDEM = 10
 
 
-def fft(sinal, fs):
+def fft(sinal, fs): # Monta o gráfico da transformada de fourrier
     """Módulo da FFT (só frequências positivas), igual ao do projeto 7."""
     X = np.abs(np.fft.rfft(sinal)) / len(sinal)
     f = np.fft.rfftfreq(len(sinal), 1 / fs)
@@ -28,11 +28,11 @@ def fft(sinal, fs):
 # Em ordem alta o polinômio único (b, a) tem coeficientes enormes e fica sensível a arredondamento;
 # a cascata não (é a forma recomendada pelo scipy).
 # sosfiltfilt aplica o filtro para frente e para trás: fase zero (sem atraso) e atenuação dobrada em dB.
-def passa_baixa(x, fc, fs=FS):
+def passa_baixa(x, fc, fs=FS): # Filtro
     return sosfiltfilt(butter(ORDEM, fc, btype="low", fs=fs, output="sos"), x)
 
 
-def passa_faixa(x, f1, f2, fs=FS):
+def passa_faixa(x, f1, f2, fs=FS): # Filtro
     return sosfiltfilt(butter(ORDEM, [f1, f2], btype="band", fs=fs, output="sos"), x)
 
 
@@ -69,29 +69,28 @@ def energia_fora(s, f1, f2):
     return np.sum(X[fora]**2) / np.sum(X**2)
 
 
-def transmite(audios):
+def transmite(audios): #modula
     """Emissor: limita a banda de cada áudio, modula na sua faixa e soma as 3 estações."""
     n = max(len(a) for a in audios)
     t = np.arange(n) / FS
     modulados = []
     for audio, (f1, f2) in zip(audios, FAIXAS):
-        m = passa_baixa(np.pad(audio, (0, n - len(audio))), F_MSG)  # completa com zeros até o maior
-        fc = (f1 + f2) / 2                                         # portadora no centro da faixa
-        modulados.append(m * np.cos(2 * np.pi * fc * t))           # AM = multiplicação
-    return modulados, sum(modulados)                               # soma = sinal no meio físico
+        m = passa_baixa(np.pad(audio, (0, n - len(audio))), F_MSG)  # trata o sinal pra modular
+        fc = (f1 + f2) / 2                                         # calcula a portadora, pegando a freq do centro da faixa
+        modulados.append(m * np.cos(2 * np.pi * fc * t))           # Modula
+    return modulados, sum(modulados)                               # soma as três estações pra pegar o sinal do "ar"
 
 
-def recebe(canal):
+def recebe(canal): #Desmodula
     """Receptor: separa cada estação com passa-faixa e demodula (síncrona)."""
     t = np.arange(len(canal)) / FS
     extraidos, demodulados = [], []
-    for f1, f2 in FAIXAS:
-        s = passa_faixa(canal, f1, f2)                  # "sintoniza" a estação
-        fc = (f1 + f2) / 2
-        # m·cos·cos = m/2 + (m/2)·cos(2·2π·fc·t): o passa-baixa tira o termo em 2fc
-        # e o fator 2 devolve a amplitude original
+    for f1, f2 in FAIXAS: # pra cada estação
+        s = passa_faixa(canal, f1, f2)     # Pega só o que ta dentro dela
+        fc = (f1 + f2) / 2                 # calcula a portadora
         extraidos.append(s)
         demodulados.append(2 * passa_baixa(s * np.cos(2 * np.pi * fc * t), F_MSG))
+         # Desmodula multiplicando por fc, usa o passa baixa pra pegar só a f que presta e multiplica por 2 pra acertar o volume
     return extraidos, demodulados
 
 
@@ -112,16 +111,16 @@ def plota_fft(sinais, nomes, titulo, faixas=FAIXAS):
 
 
 def main():
-    audios = [carrega_audio(i) for i in (1, 2, 3)]
+    audios = [carrega_audio(i) for i in (1, 2, 3)] # pega audios
     for i, a in enumerate(audios, 1):
-        toca(a, f"áudio original {i}")
+        toca(a, f"áudio original {i}") # toca eles
 
-    modulados, canal = transmite(audios)
+    modulados, canal = transmite(audios) # pega os modulados
     for i, (s, (f1, f2)) in enumerate(zip(modulados, FAIXAS), 1):
         print(f"Estação {i} ({f1 // 1000}-{f2 // 1000} kHz): energia fora da faixa = "
-              f"{10 * np.log10(energia_fora(s, f1, f2)):.1f} dB")
+              f"{10 * np.log10(energia_fora(s, f1, f2)):.1f} dB") # fala se a modulação escapou da banda alvo
 
-    extraidos, demodulados = recebe(canal)
+    extraidos, demodulados = recebe(canal) #desmodula
     for i, d in enumerate(demodulados, 1):
         salva(d, f"demodulado{i}.wav")
 
