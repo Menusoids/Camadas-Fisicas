@@ -1,7 +1,7 @@
 # Projeto 8 - Exercícios 1 a 7 (modulação AM e modulação digital)
 import numpy as np
 import matplotlib.pyplot as plt
-from projeto8_am import FS, passa_baixa, carrega_audio, toca, energia_fora, plota_fft
+from projeto8_am import FS, AUDIOS, passa_baixa, carrega_audio, toca, energia_fora, plota_fft
 
 
 def exercicio1():
@@ -28,7 +28,7 @@ def exercicio3():
 
 def exercicio5():
     """Ex5: modula um áudio em 16 kHz dentro de 14-18 kHz e demodula de volta."""
-    audio = carrega_audio(1)                            # mesmo áudio 1 do projeto
+    audio = carrega_audio(AUDIOS[0])                          # mesmo áudio 1 do projeto
     t = np.arange(len(audio)) / FS
     c = np.cos(2 * np.pi * 16000 * t)                   # 2) portadora com o mesmo nº de pontos
 

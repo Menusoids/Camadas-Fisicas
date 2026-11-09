@@ -9,7 +9,7 @@ from scipy.signal import butter, sosfiltfilt
 
 FS = 44100
 PASTA = os.path.dirname(os.path.abspath(__file__))
-DURACAO_GRAVACAO = 4                                    # segundos por áudio
+AUDIOS = ["audio_1.wav", "audio_2.wav", "Audio_3.wav"]  # na raiz do repo, um por estação
 FAIXAS = [(9000, 12000), (12000, 15000), (15000, 18000)]  # Hz, uma faixa por estação
 # Cada faixa tem 3 kHz e a portadora fica no centro, então a mensagem pode ter no máximo
 # 1,5 kHz (o AM ocupa fc ± fm). Cortamos em 1,2 kHz para sobrar margem para a queda do filtro.
@@ -36,14 +36,9 @@ def passa_faixa(x, f1, f2, fs=FS): # Filtro
     return sosfiltfilt(butter(ORDEM, [f1, f2], btype="band", fs=fs, output="sos"), x)
 
 
-def carrega_audio(i):
-    """Lê audio{i}.wav; se não existir, grava pelo microfone e salva."""
-    arquivo = os.path.join(PASTA, f"audio{i}.wav")
-    if not os.path.exists(arquivo):
-        input(f"Aperte Enter e fale por {DURACAO_GRAVACAO} s (áudio {i})...")
-        audio = sd.rec(DURACAO_GRAVACAO * FS, samplerate=FS, channels=1)
-        sd.wait()
-        wavfile.write(arquivo, FS, (audio[:, 0] * 32767).astype(np.int16))
+def carrega_audio(nome):
+    """Lê um dos áudios da raiz do repositório (um por canal)."""
+    arquivo = os.path.join(PASTA, "..", nome)
     fs, audio = wavfile.read(arquivo)
     assert fs == FS, f"{arquivo} está a {fs} Hz, precisa ser {FS} Hz"
     if audio.ndim > 1:                                  # estéreo -> mono
@@ -89,7 +84,7 @@ def recebe(canal): #Desmodula
         s = passa_faixa(canal, f1, f2)     # Pega só o que ta dentro dela
         fc = (f1 + f2) / 2                 # calcula a portadora
         extraidos.append(s)
-        demodulados.append(2 * passa_baixa(s * np.cos(2 * np.pi * fc * t), F_MSG))
+        demodulados.append(4 * passa_baixa(s * np.cos(2 * np.pi * fc * t), F_MSG))
          # Desmodula multiplicando por fc, usa o passa baixa pra pegar só a f que presta e multiplica por 2 pra acertar o volume
     return extraidos, demodulados
 
@@ -111,7 +106,7 @@ def plota_fft(sinais, nomes, titulo, faixas=FAIXAS):
 
 
 def main():
-    audios = [carrega_audio(i) for i in (1, 2, 3)] # pega audios
+    audios = [carrega_audio(a) for a in AUDIOS] # um áudio diferente por canal
     for i, a in enumerate(audios, 1):
         toca(a, f"áudio original {i}") # toca eles
 
