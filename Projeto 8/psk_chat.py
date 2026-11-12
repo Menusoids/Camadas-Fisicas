@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 from scipy.io import wavfile
 from scipy.signal import butter, sosfiltfilt
 
-FS = 44100
+FS = 44100 # amostrar por segundo 
 PASTA = os.path.dirname(os.path.abspath(__file__))
 
 # Quadro transmitido:  AQUECIMENTO | SYNC | tamanho (8 bits) | texto (8 bits/byte) | checksum (8 bits)
@@ -40,38 +40,43 @@ def bytes_para_bits(dados):
     """Cada byte vira 8 bits, do mais significativo para o menos (ex.: 'A' = 65 = 01000001)."""
     return [(b >> (7 - i)) & 1 for b in dados for i in range(8)]
 
+# O modulador só trabalha em bits então os dados que estão em bytes precisam ser convertidos para bits. 
+# ai ele faz a modulação e depois o receptor pega os bits e transforma em bytes de novo.
 
-def bits_para_bytes(bits):
+def bits_para_bytes(bits): #junta 8 bits em um byte
     return bytes(int("".join(map(str, bits[i:i + 8])), 2) for i in range(0, len(bits) - 7, 8))
 
 
 def monta_quadro(texto):
-    dados = texto.encode("utf-8")[:255]          # o tamanho vai em 1 byte -> no máximo 255
-    checksum = sum(dados) % 256                  # soma dos bytes: detecta se algum bit veio errado
+    dados = texto.encode("utf-8")[:255]          # transforma o texto em bytes
+    checksum = sum(dados) % 256                  # calcula o checksum
+
+    #                           isso aqui fala quantos bytes esperar
     return AQUECIMENTO + SYNC + bytes_para_bits([len(dados)]) + bytes_para_bits(dados) \
-        + bytes_para_bits([checksum]) + FINAL
+        + bytes_para_bits([checksum]) + FINAL #junta tudo em uma lista de bits
 
 
 # ---------------------------------------------------------------- emissor
-def amostras_por_bit(taxa):
-    return round(FS / taxa)                      # 100 bit/s a 44100 Hz -> 441 amostras por bit
-
+def amostras_por_bit(taxa): # quantas amostras por bit
+    return round(FS / taxa)                      # 100 bit/s a 44100 Hz (frequencia de desenho da onda(pontos que ele desenha por segundo)) -> 441 amostras por bit
+  
 
 def modula(bits, fc, taxa):
     """PSK: s(t) = sen(2π·fc·t + fase), com fase ∈ {0, π} trocando a cada bit 1."""
     sps = amostras_por_bit(taxa)
-    fases = np.concatenate([[0], np.cumsum(bits) % 2]) * np.pi   # 1º símbolo = referência (fase 0)
-    fase_t = np.repeat(fases, sps)                               # cada fase dura um bit inteiro
-    t = np.arange(len(fase_t)) / FS
-    s = np.sin(2 * np.pi * fc * t + fase_t)
-    rampa = np.linspace(0, 1, int(0.005 * FS))                   # 5 ms de fade: evita "clique"
+    fases = np.concatenate([[0], np.cumsum(bits) % 2]) * np.pi   # faz a soma acumulada dos bits, quando aparece um 1 ele soma pi na fase, 0 fica igual
+    fase_t = np.repeat(fases, sps)                               # faz o bit durar 441 amostras
+    t = np.arange(len(fase_t)) / FS                              # monta uma lista de instante de tempo pra cada amostra
+    s = np.sin(2 * np.pi * fc * t + fase_t)                      # monta a onda, fazendo 2pi * fc * t + fase (faz a senoide legal)
+    rampa = np.linspace(0, 1, int(0.005 * FS))                   # cria uma rampa que vai de 0 a 1 em 5 ms
     s[:len(rampa)] *= rampa
     s[-len(rampa):] *= rampa[::-1]
+    # faz um fade in e fade out no final pra evitar estalos no início e no fim do sinal. cai no aquicimento e no final.
     return s
 
 
 # ---------------------------------------------------------------- receptor
-def passa_baixa(x, fc, ordem=5):
+def passa_baixa(x, fc, ordem=5):  # faz o filtro
     sos = butter(ordem, fc, btype="low", fs=FS, output="sos")
     return sosfiltfilt(sos, x.real) + 1j * sosfiltfilt(sos, x.imag)
 
@@ -87,12 +92,12 @@ def banda_base(x, fc, taxa):
     pontos. Isso reduz o ruído; no fim de cada bit y[n] "aponta" para a fase daquele bit.
     """
     t = np.arange(len(x)) / FS
-    z = passa_baixa(x * np.exp(-2j * np.pi * fc * t), 2 * taxa)
+    z = passa_baixa(x * np.exp(-2j * np.pi * fc * t), 2 * taxa)  #multiplica por fc e passa o filtro pra tirar a parte inutil
     sps = amostras_por_bit(taxa)
     return np.convolve(z, np.ones(sps))[:len(z)]
 
 
-def acha_sync(y, sps):
+def acha_sync(y, sps):  # procura o sync no sinal recebido,
     """Procura a palavra SYNC. Retorna (posição do fim do 1º bit do SYNC, qualidade 0..1).
 
     d[n] = y[n]·conj(y[n-sps]) compara a fase do bit que termina em n com a do bit anterior:
@@ -110,13 +115,13 @@ def acha_sync(y, sps):
         corr += e * d[k * sps:k * sps + n]
         norma += a[k * sps:k * sps + n]
     i = int(np.argmax(corr))
-    return i + sps, corr[i] / (norma[i] + 1e-20)
+    return i + sps, corr[i] / (norma[i] + 1e-20) # retorna a posição do fim do primeiro bit de Sync
 
 
-def demodula(x, fc, taxa, verbose=False):
+def demodula(x, fc, taxa, verbose=False): # transforma o audio em bits, sintoniza, desmodula e retorna o texto
     """Áudio recebido -> texto. Levanta ValueError se não achar mensagem válida."""
     sps = amostras_por_bit(taxa)
-    y = banda_base(x, fc, taxa)
+    y = banda_base(x, fc, taxa) # lista de valores a ser desmodulada
     inicio, qualidade = acha_sync(y, sps)
     if verbose:
         print(f"  SYNC encontrado na amostra {inicio} ({inicio / FS:.3f} s), "
@@ -124,25 +129,25 @@ def demodula(x, fc, taxa, verbose=False):
     if inicio is None or qualidade < 0.5:
         raise ValueError(f"palavra de sincronismo não encontrada (qualidade {qualidade:.2f})")
 
-    def bit(k):                       # k-ésimo bit contando do 1º bit do SYNC
+    def bit(k):                       # o que transforma audio em bit, comparando a fase do bit atual com a do anterior (não faz em bytes, vai bit por bit)
         n = inicio + k * sps
         if n >= len(y):
             raise ValueError("áudio terminou antes da mensagem")
-        return int(np.real(y[n] * np.conj(y[n - sps])) < 0)   # fase inverteu? -> 1
+        return int(np.real(y[n] * np.conj(y[n - sps])) < 0)   # Linha que pega a fase do bit atual e compara com o antigo, quando da perto de 1 ele coloca o bit como 1. o resto da zero
 
-    k = len(SYNC)
-    tamanho = bits_para_bytes([bit(k + i) for i in range(8)])[0]
-    k += 8
-    dados = bits_para_bytes([bit(k + i) for i in range(8 * tamanho)])
-    k += 8 * tamanho
-    checksum = bits_para_bytes([bit(k + i) for i in range(8)])[0]
+    k = len(SYNC)  # começa depois do SYNC
+    tamanho = bits_para_bytes([bit(k + i) for i in range(8)])[0] # lê o tamanho do texto (em bytes) que está nos 8 bits seguintes ao SYNC
+    k += 8 # pula os 8 bits do tamanho
+    dados = bits_para_bytes([bit(k + i) for i in range(8 * tamanho)]) # lê todos os bits do texto em uma tacada só e transforma em bytes
+    k += 8 * tamanho #pula os bits do texto
+    checksum = bits_para_bytes([bit(k + i) for i in range(8)])[0] # lê os 8 bits do checksum
     if verbose:
         print(f"  tamanho = {tamanho} bytes, checksum recebido = {checksum}, "
               f"calculado = {sum(dados) % 256}")
         print(f"  bytes = {list(dados)}")
     if checksum != sum(dados) % 256:
-        raise ValueError(f"checksum não confere, chegou: {dados.decode('utf-8', 'replace')!r}")
-    return dados.decode("utf-8", "replace")
+        raise ValueError(f"checksum não confere, chegou: {dados.decode('utf-8', 'replace')!r}") #fala se deu errado
+    return dados.decode("utf-8", "replace") # retorna o texto decodificado
 
 
 # ---------------------------------------------------------------- FFT e banda
@@ -223,7 +228,7 @@ def emissor(args):
             plt.show()
 
 
-def potencia_na_banda(bloco, fc, taxa):
+def potencia_na_banda(bloco, fc, taxa): # faz a fft do silencio em um bloco para pegar a energia do ruido
     f, X = fft(bloco)
     return np.sum(X[(f > fc - 2 * taxa) & (f < fc + 2 * taxa)] ** 2)
 
@@ -239,7 +244,7 @@ def receptor(args):
     with stream:
         print("Calibrando o ruído (fique em silêncio 1 s)...")
         ruido = np.median([potencia_na_banda(fila.get(), args.fc, args.taxa) for _ in range(20)])
-        limiar = 10 * ruido + 1e-12                        # 10 dB acima do ruído
+        limiar = 10 * ruido + 1e-12                       # calcula o limiar de quando começar a gravar
         print(f"RECEPTOR PSK - portadora {args.fc} Hz, {args.taxa} bit/s. Escutando... (Ctrl+C sai)")
         if args.verbose:
             print(f"  ruído na banda = {ruido:.2e}, limiar = {limiar:.2e}")
@@ -248,7 +253,7 @@ def receptor(args):
         try:
             while True:
                 bloco = fila.get()
-                alto = potencia_na_banda(bloco, args.fc, args.taxa) > limiar
+                alto = potencia_na_banda(bloco, args.fc, args.taxa) > limiar # ativa agravação
                 if not gravando:
                     antes.append(bloco)
                     if alto:
