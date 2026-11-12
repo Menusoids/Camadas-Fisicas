@@ -217,7 +217,9 @@ def emissor(args):
             print(f"  bits do quadro: {''.join(map(str, bits))}")
             descreve_banda(s, args.fc, args.taxa)
         salva("emitido.wav", s)
-        sd.play(0.8 * s, FS)
+        # 0.5 s de silêncio no fim: no Windows o sd.play cortava os últimos ~200 ms do áudio
+        # (sumia o último caractere + checksum). Com o silêncio, o que é cortado é só o silêncio.
+        sd.play(np.concatenate([0.8 * s, np.zeros(FS // 2)]), FS)
         sd.wait()
         if args.plot:
             _, ax = plt.subplots(2, 1, figsize=(9, 6))
@@ -244,7 +246,7 @@ def receptor(args):
     with stream:
         print("Calibrando o ruído (fique em silêncio 1 s)...")
         ruido = np.median([potencia_na_banda(fila.get(), args.fc, args.taxa) for _ in range(20)])
-        limiar = 10 * ruido + 1e-12                       # calcula o limiar de quando começar a gravar
+        limiar = args.limiar * ruido + 1e-12                     # calcula o limiar de quando começar a gravar
         print(f"RECEPTOR PSK - portadora {args.fc} Hz, {args.taxa} bit/s. Escutando... (Ctrl+C sai)")
         if args.verbose:
             print(f"  ruído na banda = {ruido:.2e}, limiar = {limiar:.2e}")
@@ -262,24 +264,31 @@ def receptor(args):
                     continue
                 trecho.append(bloco)
                 silencio = 0 if alto else silencio + 1
-                if silencio >= 6:                          # 300 ms sem sinal: acabou a mensagem
-                    gravando = False
-                    x = np.concatenate(trecho)
-                    salva("recebido.wav", x)
-                    try:
-                        print(f"[recebido] {demodula(x, args.fc, args.taxa, args.verbose)}")
-                    except ValueError as erro:
+                fim = silencio >= 20                       # 1 s sem sinal: desiste desse trecho
+                x = np.concatenate(trecho)
+                # tenta demodular a cada bloco: assim que o checksum bate, a mensagem chegou
+                # (não depende de detectar o fim pela energia, que cortava a mensagem no meio)
+                try:
+                    texto = demodula(x, args.fc, args.taxa, args.verbose and fim)
+                except ValueError as erro:
+                    if fim:
                         print(f"[erro] {erro}")
-                    if args.plot:
-                        _, ax = plt.subplots(2, 1, figsize=(9, 6))
-                        plota(ax[0], x, args.fc, args.taxa, "FFT do sinal recebido", zoom=False)
-                        plota(ax[1], x, args.fc, args.taxa, "FFT do sinal recebido (zoom na portadora)")
-                        ax[1].set_xlabel("Frequência [Hz]")
-                        plt.tight_layout()
-                        plt.show()
-                        while not fila.empty():            # descarta o que chegou com o gráfico aberto
-                            fila.get()
-                    antes.clear()
+                        salva("recebido.wav", x)
+                        gravando = False
+                        antes.clear()
+                    continue
+                salva("recebido.wav", x)
+                if args.verbose and not fim:
+                    demodula(x, args.fc, args.taxa, True)
+                print(f"[recebido] {texto}")
+                if args.plot:
+                    _, ax = plt.subplots(2, 1, figsize=(9, 6))
+                    plota(ax[0], x, args.fc, args.taxa, "FFT do sinal recebido", zoom=False)
+                    plota(ax[1], x, args.fc, args.taxa, "FFT do sinal recebido (zoom na portadora)")
+                    ax[1].set_xlabel("Frequência [Hz]")
+                    plt.tight_layout()
+                    plt.show()
+                return                                     # mensagem recebida: encerra
         except KeyboardInterrupt:
             pass
 
@@ -351,6 +360,7 @@ if __name__ == "__main__":
     p.add_argument("modo", choices=["tx", "rx", "fft", "analise", "teste"])
     p.add_argument("--fc", type=float, default=4000, help="portadora em Hz (2000 a 6000)")
     p.add_argument("--taxa", type=int, default=100, help="taxa em bit/s")
+    p.add_argument("--limiar", type=float, default=30, help="rx: dispara com energia > limiar x ruído")
     p.add_argument("--plot", action="store_true", help="mostra a FFT a cada mensagem")
     p.add_argument("-v", "--verbose", action="store_true", help="imprime bits, sync, banda...")
     args = p.parse_args()
